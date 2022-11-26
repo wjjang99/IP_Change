@@ -7,7 +7,9 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Management;
+using System.Net;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace IP_Change
 {
@@ -72,20 +74,28 @@ namespace IP_Change
 			[DefaultValue(false)]
 			[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
 			public bool dhcp { get; set; }
+			
 			public string ip { get; set; }
+
+			[DefaultValue("255.255.255.0")]
+			[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
 			public string subnet { get; set; }
+			
 			public string gateway { get; set; }
 
 			[DefaultValue(1)]
 			[JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate)]
 			public int metric { get; set; }
+			
 			public string dns { get; set; }
 		}
 
 		class Adapter
 		{
 			public string name { get; set; }
+			
 			public string ssid { get; set; }
+			
 			public Config config { get; set; }
 		}
 
@@ -93,8 +103,11 @@ namespace IP_Change
 		{
 			List<Adapter> networkList = new List<Adapter>();
 
+			
 			public int selectedAdapterIndex { get; set; }
+			
 			public int selectedInterfaceIndex { get; set; }
+			
 			public List<Adapter> networks { get { return networkList; } set { networkList = value; } }
 		}
 
@@ -107,14 +120,23 @@ namespace IP_Change
 		class Interface
 		{
 			public string guid { get; set; }
+			
 			public string name { get; set; }
+			
 			public string deviceID { get; set; }
+			
 			public string netConnectionID { get; set; }
+			
 			public int index { get; set; }
+			
 			public int interfaceIndex { get; set; }
+			
 			public string macAddr { get; set; }
+			
 			public int typeId { get; set; }
+			
 			public bool netEnabled { get; set; }
+			
 			public bool physicalAdapter { get; set; }
 		}
 
@@ -161,6 +183,213 @@ namespace IP_Change
 			}
 
 			return false;
+		}
+
+		static bool LoadAdaptersConfig()
+		{
+			try
+			{
+				if (_debug) Console.WriteLine("Load Adapters Config...");
+
+				AdapterList = JsonConvert.DeserializeObject<Networks>(File.ReadAllText("IP Change.json"));
+
+				if (_debug)
+				{
+					int idx = 1;
+
+					if (_debug) Console.WriteLine("  - adapterList count: {0}", AdapterList.networks.Count);
+					if (_debug) Console.WriteLine("  + idx, name, ssid, dhcp, ip");
+
+					foreach (Adapter adapter in AdapterList.networks)
+					{
+						string mesg = "  > " + (idx++)
+							+ " " + adapter.name
+							+ ", " + (string.IsNullOrEmpty(adapter.ssid) ? "local" : adapter.ssid)
+							+ ", " + (adapter.config.dhcp ? _DHCP : _FIX)
+							+ ", " + (adapter.config.dhcp ? _AUTO : adapter.config.ip)
+						;
+						Console.WriteLine(mesg);
+					}
+				}
+
+				if (AdapterList == null || AdapterList.networks.Count() == 0)
+				{
+					Console.WriteLine("The config file has some problem...");
+					return false;
+				}
+			}
+			catch (Exception e)
+			{
+				Console.WriteLine(e.Message);
+				return false;
+			}
+
+			if (_debug) Console.WriteLine();
+
+			return true;
+		}
+
+		static bool InspectAdaptersConfig()
+		{
+			/*
+			 * https://ihateregex.io/expr/ipv6/
+			IPV4	^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$
+			IPV6	(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))
+			Subnet	^(((255\.){3}(255|254|252|248|240|224|192|128|0+))|((255\.){2}(255|254|252|248|240|224|192|128|0+)\.0)|((255\.)(255|254|252|248|240|224|192|128|0+)(\.0+){2})|((255|254|252|248|240|224|192|128|0+)(\.0+){3}))$
+			MAC		^[a-fA-F0-9]{2}(:[a-fA-F0-9]{2}){5}$
+			 */
+			const string RGX_IPV4 = "^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$";
+			const string RGX_IPV6 = "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))";
+			const string RGX_MAC = "^[a-fA-F0-9]{2}(:[a-fA-F0-9]{2}){5}$";
+			const string RGX_SUBNET = "^(((255\\.){3}(255|254|252|248|240|224|192|128|0+))|((255\\.){2}(255|254|252|248|240|224|192|128|0+)\\.0)|((255\\.)(255|254|252|248|240|224|192|128|0+)(\\.0+){2})|((255|254|252|248|240|224|192|128|0+)(\\.0+){3}))$";
+
+			for (int idx = 0; idx < AdapterList.networks.Count; idx++)
+			{
+				Regex regex = null;
+				Adapter adapter = AdapterList.networks[idx];
+
+				if (string.IsNullOrEmpty(adapter.name))
+				{
+					Console.WriteLine($"[Error] #{idx + 1} the name is a required value.");
+					return false;
+				}
+
+				if (adapter.config.dhcp == false)
+				{
+					string[] dnsList = adapter.config.dns.Split(';');
+
+					// inspect required value
+					if (string.IsNullOrEmpty(adapter.config.ip))
+					{
+						Console.WriteLine($"[Error] #{idx + 1} if dhcp is false then the ip is a required value.");
+						return false;
+					}
+
+					if (string.IsNullOrEmpty(adapter.config.subnet))
+					{
+						Console.WriteLine($"[Error] #{idx + 1} if dhcp is false then the subnet is a required value.");
+						return false;
+					}
+
+					if (string.IsNullOrEmpty(adapter.config.gateway))
+					{
+						Console.WriteLine($"[Error] #{idx + 1} if dhcp is false then the gateway is a required value.");
+						return false;
+					}
+
+					// check valid value
+					regex = new Regex(RGX_IPV4);
+
+					if (regex.IsMatch(adapter.config.ip) == false)
+					{
+						regex = new Regex(RGX_IPV6);
+
+						if (regex.IsMatch(adapter.config.ip) == false)
+						{
+							Console.WriteLine($"[Error] #{idx + 1} the ip is not a valid value.");
+							return false;
+						}
+					}
+
+					regex = new Regex(RGX_SUBNET);
+
+					if (regex.IsMatch(adapter.config.subnet) == false)
+					{
+						Console.WriteLine($"[Error] #{idx + 1} the subnet is not a valid value.");
+						return false;
+					}
+
+					regex = new Regex(RGX_IPV4);
+
+					if (regex.IsMatch(adapter.config.gateway) == false)
+					{
+						regex = new Regex(RGX_IPV6);
+
+						if (regex.IsMatch(adapter.config.gateway) == false)
+						{
+							Console.WriteLine($"[Error] #{idx + 1} the gateway is not a valid value.");
+							return false;
+						}
+					}
+
+					for (int itemIdx = 0; itemIdx < dnsList.Length; itemIdx++)
+					{
+						string dns = dnsList[itemIdx];
+
+						if (regex.IsMatch(dns) == false)
+						{
+							regex = new Regex(RGX_IPV6);
+
+							if (regex.IsMatch(dns) == false)
+							{
+								Console.WriteLine($"[Error] #{idx + 1} the dns({itemIdx + 1}) is not a valid value.");
+								return false;
+							}
+						}
+					}
+				}
+			}
+
+			return true;
+		}
+
+		static bool RetrieveNetworkInterface()
+		{
+			try
+			{
+				int idx = 1;
+				string NamespacePath = "\\\\.\\ROOT\\cimv2";
+				string ClassName = "Win32_NetworkAdapter"; // PS> Get-WmiObject Win32_NetworkAdapter | Get-Member
+
+				ManagementClass mngtClass = new ManagementClass(NamespacePath + ":" + ClassName);
+
+				if (_debug) Console.WriteLine("Retrieve Network Interface...");
+				if (_debug) Console.WriteLine($"  + guid, name, index, interfaceIndex, macAddr, typeId, netEnabled, physicalAdapter");
+
+				foreach (ManagementObject mngtObj in mngtClass.GetInstances())
+				{
+					string guid = (string)mngtObj["GUID"];
+					string name = (string)mngtObj["Name"];
+					string deviceID = (string)mngtObj["DeviceID"];
+					string netConnectionID = (string)mngtObj["NetConnectionID"];
+					int index = Convert.ToInt32(mngtObj["Index"]);
+					int interfaceIndex = Convert.ToInt32(mngtObj["InterfaceIndex"]);
+					string macAddr = (string.IsNullOrEmpty((string)mngtObj["MACAddress"]) ? string.Empty : ((string)mngtObj["MACAddress"]).Replace(':', '-'));
+					int typeId = Convert.ToInt16(mngtObj["AdapterTypeID"]);
+					bool netEnabled = Convert.ToBoolean(mngtObj["NetEnabled"]);
+					bool physicalAdapter = Convert.ToBoolean(mngtObj["PhysicalAdapter"]);
+
+					if (_debug) Console.Write($"  > {guid}, {name}, {deviceID}, {netConnectionID}, {index}, {interfaceIndex}, {macAddr}, {typeId}, {netEnabled}, {physicalAdapter}");
+
+					if (string.IsNullOrEmpty(guid) == false && index > 0 && string.IsNullOrEmpty(macAddr) == false && physicalAdapter)
+					{
+						InterfaceList.Add(new Interface()
+						{
+							guid = guid,
+							name = name,
+							deviceID = deviceID,
+							netConnectionID = netConnectionID,
+							index = index,
+							interfaceIndex = interfaceIndex,
+							macAddr = macAddr,
+							typeId = typeId,
+							netEnabled = netEnabled
+						});
+						if (_debug) Console.Write($" -> added, {idx++}");
+					}
+
+					if (_debug) Console.WriteLine();
+				}
+			}
+			catch (Exception e)
+			{
+				Console.WriteLine(e.Message);
+				return false;
+			}
+
+			if (_debug) Console.WriteLine();
+
+			return true;
 		}
 
 		static void SetWiredAdapter(Adapter adpCfg, Interface infCfg)
@@ -386,100 +615,11 @@ namespace IP_Change
 			}
 			#endregion
 
-			#region Load Adapters Config
-			try
-			{
-				if (_debug) Console.WriteLine("Load Adapters Config...");
+			if (LoadAdaptersConfig() == false) return;
 
-				AdapterList = JsonConvert.DeserializeObject<Networks>(File.ReadAllText("IP Change.json"));
+			if (InspectAdaptersConfig() == false) return;
 
-				if (_debug) {
-					int idx = 1;
-
-					if (_debug) Console.WriteLine("  - adapterList count: {0}", AdapterList.networks.Count);
-					if (_debug) Console.WriteLine("  + idx, name, ssid, dhcp, ip");
-
-					foreach (Adapter adapter in AdapterList.networks)
-					{
-						string mesg = "  > " + (idx++)
-							+ " " + adapter.name
-							+ ", " + (string.IsNullOrEmpty(adapter.ssid) ? "local" : adapter.ssid)
-							+ ", " + (adapter.config.dhcp ? _DHCP : _FIX)
-							+ ", " + (adapter.config.dhcp ? _AUTO : adapter.config.ip)
-						;
-						Console.WriteLine(mesg);
-					}
-				}
-
-				if (AdapterList == null || AdapterList.networks.Count() == 0)
-				{
-					Console.WriteLine("The config file has some problem...");
-					return;
-				}
-			}
-			catch (Exception e)
-			{
-				Console.WriteLine(e.Message);
-				return;
-			}
-
-			if (_debug) Console.WriteLine();
-			#endregion
-
-			#region Retrieve Network Interface
-			try
-			{
-				int idx = 1;
-				string NamespacePath = "\\\\.\\ROOT\\cimv2";
-				string ClassName = "Win32_NetworkAdapter"; // PS> Get-WmiObject Win32_NetworkAdapter | Get-Member
-
-				ManagementClass mngtClass = new ManagementClass(NamespacePath + ":" + ClassName);
-
-				if (_debug) Console.WriteLine("Retrieve Network Interface...");
-				if (_debug) Console.WriteLine($"  + guid, name, index, interfaceIndex, macAddr, typeId, netEnabled, physicalAdapter");
-
-				foreach (ManagementObject mngtObj in mngtClass.GetInstances())
-				{
-					string guid = (string)mngtObj["GUID"];
-					string name = (string)mngtObj["Name"];
-					string deviceID = (string)mngtObj["DeviceID"];
-					string netConnectionID = (string)mngtObj["NetConnectionID"];
-					int index = Convert.ToInt32(mngtObj["Index"]);
-					int interfaceIndex = Convert.ToInt32(mngtObj["InterfaceIndex"]);
-					string macAddr = (string.IsNullOrEmpty((string)mngtObj["MACAddress"]) ? string.Empty : ((string)mngtObj["MACAddress"]).Replace(':', '-'));
-					int typeId = Convert.ToInt16(mngtObj["AdapterTypeID"]);
-					bool netEnabled = Convert.ToBoolean(mngtObj["NetEnabled"]);
-					bool physicalAdapter = Convert.ToBoolean(mngtObj["PhysicalAdapter"]);
-
-					if (_debug) Console.Write($"  > {guid}, {name}, {deviceID}, {netConnectionID}, {index}, {interfaceIndex}, {macAddr}, {typeId}, {netEnabled}, {physicalAdapter}");
-
-					if (string.IsNullOrEmpty(guid) == false && index > 0 && string.IsNullOrEmpty(macAddr) == false && physicalAdapter)
-					{
-						InterfaceList.Add(new Interface() {
-							  guid = guid
-							, name = name
-							, deviceID = deviceID
-							, netConnectionID = netConnectionID
-							, index = index
-							, interfaceIndex = interfaceIndex
-							, macAddr = macAddr
-							, typeId = typeId
-							, netEnabled = netEnabled
-						});
-						if (_debug) Console.Write($" -> added, {idx++}");
-					}
-
-					if (_debug) Console.WriteLine();
-				}
-			}
-			catch (Exception e)
-			{
-				Console.WriteLine(e.Message);
-				return;
-			}
-
-			if (_debug) Console.WriteLine();
-			#endregion
+			if (RetrieveNetworkInterface() == false) return;
 
 			#region Select Network Interface
 			if (InterfaceList.Count > 1 && chooseInterfaceIndex == 0)
