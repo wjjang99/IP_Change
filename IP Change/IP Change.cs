@@ -7,7 +7,6 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Management;
-using System.Net;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
@@ -24,6 +23,48 @@ namespace IP_Change
 		static readonly string _DHCP = "DHCP";
 		static readonly string _FIX = "Fix";
 		static readonly string _AUTO = "Auto";
+
+		static readonly Hashtable EnableDHCPReturnValue = new Hashtable()
+		{
+			  { 0, "Successful completion, no reboot required" }
+			, { 1, "Successful completion, reboot required" }
+			, { 64, "Method not supported on this platform" }
+			, { 65, "Unknown failure" }
+			, { 66, "Invalid subnet mask" }
+			, { 67, "An error occurred while processing an Instance that was returned" }
+			, { 68, "Invalid input parameter" }
+			, { 69, "More than 5 gateways specified" }
+			, { 70, "Invalid IP address" }
+			, { 71, "Invalid gateway IP address" }
+			, { 72, "An error occurred while accessing the Registry for the requested information" }
+			, { 73, "Invalid domain name" }
+			, { 74, "Invalid host name" }
+			, { 75, "No primary/secondary WINS server defined" }
+			, { 76, "Invalid file" }
+			, { 77, "Invalid system path" }
+			, { 78, "File copy failed" }
+			, { 79, "Invalid security parameter" }
+			, { 80, "Unable to configure TCP/IP service" }
+			, { 81, "Unable to configure DHCP service" }
+			, { 82, "Unable to renew DHCP lease" }
+			, { 83, "Unable to release DHCP lease" }
+			, { 84, "IP not enabled on adapter" }
+			, { 85, "IPX not enabled on adapter" }
+			, { 86, "Frame/network number bounds error" }
+			, { 87, "Invalid frame type" }
+			, { 88, "Invalid network number" }
+			, { 89, "Duplicate network number" }
+			, { 90, "Parameter out of bounds" }
+			, { 91, "Access denied" }
+			, { 92, "Out of memory" }
+			, { 93, "Already exists" }
+			, { 94, "Path, file or object not found" }
+			, { 95, "Unable to notify service" }
+			, { 96, "Unable to notify DNS service" }
+			, { 97, "Interface not configurable" }
+			, { 98, "Not all DHCP leases could be released/renewed" }
+			, { 100, "DHCP not enabled on adapter" }
+		};
 
 		static readonly Hashtable SetDnsReturnValue = new Hashtable()
 		{
@@ -240,7 +281,6 @@ namespace IP_Change
 			 */
 			const string RGX_IPV4 = "^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$";
 			const string RGX_IPV6 = "(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))";
-			const string RGX_MAC = "^[a-fA-F0-9]{2}(:[a-fA-F0-9]{2}){5}$";
 			const string RGX_SUBNET = "^(((255\\.){3}(255|254|252|248|240|224|192|128|0+))|((255\\.){2}(255|254|252|248|240|224|192|128|0+)\\.0)|((255\\.)(255|254|252|248|240|224|192|128|0+)(\\.0+){2})|((255|254|252|248|240|224|192|128|0+)(\\.0+){3}))$";
 
 			for (int idx = 0; idx < AdapterList.networks.Count; idx++)
@@ -256,28 +296,31 @@ namespace IP_Change
 
 				if (adapter.config.dhcp == false)
 				{
-					string[] dnsList = adapter.config.dns.Split(';');
-
-					// inspect required value
+					#region inspect required value
+					// ip
 					if (string.IsNullOrEmpty(adapter.config.ip))
 					{
 						Console.WriteLine($"[Error] #{idx + 1} if dhcp is false then the ip is a required value.");
 						return false;
 					}
 
+					// subnet
 					if (string.IsNullOrEmpty(adapter.config.subnet))
 					{
 						Console.WriteLine($"[Error] #{idx + 1} if dhcp is false then the subnet is a required value.");
 						return false;
 					}
 
+					// gatway
 					if (string.IsNullOrEmpty(adapter.config.gateway))
 					{
 						Console.WriteLine($"[Error] #{idx + 1} if dhcp is false then the gateway is a required value.");
 						return false;
 					}
+					#endregion
 
-					// check valid value
+					#region check valid value
+					// ip
 					regex = new Regex(RGX_IPV4);
 
 					if (regex.IsMatch(adapter.config.ip) == false)
@@ -291,6 +334,7 @@ namespace IP_Change
 						}
 					}
 
+					// subnet
 					regex = new Regex(RGX_SUBNET);
 
 					if (regex.IsMatch(adapter.config.subnet) == false)
@@ -299,6 +343,7 @@ namespace IP_Change
 						return false;
 					}
 
+					// gateway
 					regex = new Regex(RGX_IPV4);
 
 					if (regex.IsMatch(adapter.config.gateway) == false)
@@ -311,6 +356,9 @@ namespace IP_Change
 							return false;
 						}
 					}
+
+					// dns
+					string[] dnsList = adapter.config.dns.Split(';');
 
 					for (int itemIdx = 0; itemIdx < dnsList.Length; itemIdx++)
 					{
@@ -327,6 +375,7 @@ namespace IP_Change
 							}
 						}
 					}
+					#endregion
 				}
 			}
 
@@ -344,7 +393,7 @@ namespace IP_Change
 				ManagementClass mngtClass = new ManagementClass(NamespacePath + ":" + ClassName);
 
 				if (_debug) Console.WriteLine("Retrieve Network Interface...");
-				if (_debug) Console.WriteLine($"  + guid, name, index, interfaceIndex, macAddr, typeId, netEnabled, physicalAdapter");
+				if (_debug) Console.WriteLine($"  + guid, name, index, interfaceIndex, deviceId, netConnectionId, macAddr, typeId, netEnabled, physicalAdapter");
 
 				foreach (ManagementObject mngtObj in mngtClass.GetInstances())
 				{
@@ -359,7 +408,7 @@ namespace IP_Change
 					bool netEnabled = Convert.ToBoolean(mngtObj["NetEnabled"]);
 					bool physicalAdapter = Convert.ToBoolean(mngtObj["PhysicalAdapter"]);
 
-					if (_debug) Console.Write($"  > {guid}, {name}, {deviceID}, {netConnectionID}, {index}, {interfaceIndex}, {macAddr}, {typeId}, {netEnabled}, {physicalAdapter}");
+					if (_debug) Console.Write($"  > {guid}, {name}, {index}, {interfaceIndex}, {deviceID}, {netConnectionID}, {macAddr}, {typeId}, {netEnabled}, {physicalAdapter}");
 
 					if (string.IsNullOrEmpty(guid) == false && index > 0 && string.IsNullOrEmpty(macAddr) == false && physicalAdapter)
 					{
@@ -394,6 +443,7 @@ namespace IP_Change
 
 		static void SetWiredAdapter(Adapter adpCfg, Interface infCfg)
 		{
+			ManagementClass mngtClass = null;
 			string NamespacePath = "\\\\.\\ROOT\\cimv2";
 			string ClassName = "Win32_NetworkAdapterConfiguration"; // PS> Get-WmiObject Win32_NetworkAdapterConfiguration | Get-Member
 			string mesg = null;
@@ -410,7 +460,7 @@ namespace IP_Change
 			;
 			if (_debug) Console.WriteLine("  - {0}", mesg);
 
-			ManagementClass mngtClass = new ManagementClass(NamespacePath + ":" + ClassName);
+			mngtClass = new ManagementClass(NamespacePath + ":" + ClassName);
 
 			if (_debug) Console.WriteLine("  + index, caption, mac");
 
@@ -424,31 +474,65 @@ namespace IP_Change
 
 				if (index == infCfg.index && macAddr.Equals(infCfg.macAddr))
 				{
-					bool netEnabled = false, ipEnabled = false;
+					ManagementBaseObject inMngtBaseObj = null, outMngtBaseObj = null;
+					string[] ipAddress = null, subnetMask = null, gateway = null, dns = null;
+					int[] metric = null;
+					uint retCode = 0;
 
 					if (adpCfg.config.dhcp)
 					{
 						// ***********************************************************************
 						// set dhcp
 						// ***********************************************************************
-						//wmiObject.InvokeMethod("Enable", null);
-						Console.WriteLine("DHCP Enable");
+						Console.WriteLine("    -> DHCP");
+
+						#region enable dhcp
+						Console.Write("       Enable DHCP");
+						outMngtBaseObj = mngtObj.InvokeMethod("EnableDHCP", null, null);
+						Console.Write(".");
+
+						retCode = Convert.ToUInt32(outMngtBaseObj["ReturnValue"]);
+						Console.Write(String.Empty.PadLeft(23, '.'));
+
+						if (retCode == 0)
+						{
+							Console.WriteLine("OK");
+
+							#region get ip/subnet/gateway/dns
+							ipAddress = (string[])mngtObj["IPAddress"];
+							Console.WriteLine("         IP: " + ipAddress[0]);
+
+							subnetMask = (string[])mngtObj["IPSubnet"];
+							Console.WriteLine("         Subnet: " + subnetMask[0]);
+
+							gateway = (string[])mngtObj["DefaultIPGateway"];
+							Console.WriteLine("         GateWay: " + gateway[0]);
+
+							dns = (string[])mngtObj["DNSServerSearchOrder"];
+							Console.WriteLine("         DNS: " + string.Join(";", dns));
+							#endregion
+						}
+						else
+						{
+							Console.Write("({0}) ", retCode);
+							Console.WriteLine("Fail: {0}", EnableDHCPReturnValue[(int)retCode]);
+						}
+						#endregion
 					}
 					else
 					{
 						// ***********************************************************************
 						// set static
 						// ***********************************************************************
-						ManagementBaseObject inMngtBaseObj = null, outMngtBaseObj = null;
-						uint retCode = 0;
+						bool netEnabled = false, ipEnabled = false;
 
-						string[] ipAddress = new string[] { adpCfg.config.ip };
-						string[] subnetMask = new string[] { adpCfg.config.subnet };
-						string[] defaultIPGateway = new string[] { adpCfg.config.gateway };
-						int[] gatewayCostMetric = new int[] { adpCfg.config.metric };
-						string[] dns = adpCfg.config.dns.Split(';');
+						ipAddress = new string[] { adpCfg.config.ip };
+						subnetMask = new string[] { adpCfg.config.subnet };
+						gateway = new string[] { adpCfg.config.gateway };
+						metric = new int[] { adpCfg.config.metric };
+						dns = adpCfg.config.dns.Split(';');
 
-						Console.WriteLine("    -> IP: {0}, SUBNET: {1}, G/W: {2}, DNS: {3}", string.Join(";", ipAddress), string.Join(";", subnetMask), string.Join(";", defaultIPGateway), string.Join(";", dns));
+						Console.WriteLine("    -> IP: {0}, SUBNET: {1}, G/W: {2}, DNS: {3}", string.Join(";", ipAddress), string.Join(";", subnetMask), string.Join(";", gateway), string.Join(";", dns));
 
 						#region Network Enabled
 						Console.Write("       Network Enabled");
@@ -509,7 +593,8 @@ namespace IP_Change
 						}
 						else
 						{
-							Console.WriteLine("Fail: {0}", Marshal.GetExceptionForHR((int)retCode).Message);
+							Console.Write("({0}) ", retCode);
+							Console.WriteLine("Fail: {0}", retCode, Marshal.GetExceptionForHR((int)retCode).Message);
 						}
 						#endregion
 
@@ -521,8 +606,8 @@ namespace IP_Change
 						Console.Write(".");
 
 						// set value
-						inMngtBaseObj["DefaultIPGateway"] = defaultIPGateway;
-						inMngtBaseObj["GatewayCostMetric"] = gatewayCostMetric;
+						inMngtBaseObj["DefaultIPGateway"] = gateway;
+						inMngtBaseObj["GatewayCostMetric"] = metric;
 						Console.Write(".");
 
 						// apply method
@@ -538,6 +623,7 @@ namespace IP_Change
 						}
 						else
 						{
+							Console.Write("({0}) ", retCode);
 							Console.WriteLine("Fail: {0}", Marshal.GetExceptionForHR((int)retCode).Message);
 						}
 						#endregion
@@ -579,7 +665,24 @@ namespace IP_Change
 
 		static void SetWirelessdAdapter(Adapter adpCfg, Interface infCfg)
 		{
+			string mesg = null;
+
 			Console.WriteLine("Change Wirelessd Interface...");
+
+			mesg = ""
+				+ "name: " + adpCfg.name
+				+ ", dhcp: " + (adpCfg.config.dhcp ? _DHCP : _FIX)
+				+ ", ip: " + (adpCfg.config.dhcp ? _AUTO : adpCfg.config.ip)
+				+ ", subnet: " + (adpCfg.config.dhcp ? _AUTO : adpCfg.config.subnet)
+				+ ", gateway: " + (adpCfg.config.dhcp ? _AUTO : adpCfg.config.gateway)
+				+ ", dns: " + (adpCfg.config.dhcp ? _AUTO : adpCfg.config.dns)
+			;
+			if (_debug) Console.WriteLine("  - {0}", mesg);
+
+			if (_debug) Console.WriteLine("  + index, caption, mac");
+
+
+
 		}
 
 		public static void Main(string[] args)
@@ -620,6 +723,48 @@ namespace IP_Change
 			if (InspectAdaptersConfig() == false) return;
 
 			if (RetrieveNetworkInterface() == false) return;
+
+			// Enumerate Interface Connections
+			Console.WriteLine("Enumerate Interface Connections...");
+
+			foreach (InterfaceConnectionInfo interfaceConnectionInfo in NativeWifi.EnumerateInterfaceConnections())
+			{
+				Console.WriteLine("  {0}, {1}, {2}, {3}", interfaceConnectionInfo.Id, interfaceConnectionInfo.Description, interfaceConnectionInfo.ProfileName, interfaceConnectionInfo.IsConnected);
+			}
+
+			Console.WriteLine();
+
+			// Enumerate Available Network Ssids
+			Console.WriteLine("Enumerate Available Network Ssids...");
+
+			foreach (NetworkIdentifier networkIdentifier in NativeWifi.EnumerateAvailableNetworkSsids())
+			{
+				Console.WriteLine("  [{0}]", networkIdentifier.ToString());
+			}
+
+			Console.WriteLine();
+
+			// Enumerate Connected Network Ssids
+			Console.WriteLine("Enumerate Connected Network Ssids...");
+
+			foreach (NetworkIdentifier networkIdentifier in NativeWifi.EnumerateConnectedNetworkSsids())
+			{
+				Console.WriteLine("  [{0}]", networkIdentifier.ToString());
+			}
+
+			Console.WriteLine();
+
+			// Enumerate Profiles
+			Console.WriteLine("Enumerate Profiles...");
+
+			foreach (ProfilePack profilePack in NativeWifi.EnumerateProfiles())
+			{
+				Console.WriteLine("  {0}, {1}, {2}, {3}", profilePack.Name, profilePack.Position, profilePack.Interface.Id, profilePack.Interface.Description);
+			}
+
+			Console.WriteLine();
+
+			return;
 
 			#region Select Network Interface
 			if (InterfaceList.Count > 1 && chooseInterfaceIndex == 0)
@@ -759,7 +904,7 @@ namespace IP_Change
 			if (_debug) Console.WriteLine("[CFG] name: {0}", adpCfg.name);
 
 			isWireless = IsWirelessInterface(infCfg.guid);
-			if (_debug) Console.WriteLine("[INF] id: {0}, name: {1}, mac: {2}, type: {3}", infCfg.guid, infCfg.name, infCfg.macAddr, (isWireless ? _WIRELESS : _WIRED));
+			if (_debug) Console.WriteLine("[INF] id: {0}, name: {1}, index: {2}, mac: {3}, type: {4}", infCfg.guid, infCfg.name, infCfg.index, infCfg.macAddr, (isWireless ? _WIRELESS : _WIRED));
 
 			if (isWireless)
 			{
