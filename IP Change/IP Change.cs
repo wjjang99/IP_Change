@@ -441,6 +441,51 @@ namespace IP_Change
 			return true;
 		}
 
+		static void EnumerateWirelessAvailableNetworkSsids()
+		{
+			if (_debug)
+			{
+				Console.WriteLine("Enumerate Wireless Available Network Ssids...");
+
+				foreach (NetworkIdentifier data in NativeWifi.EnumerateAvailableNetworkSsids())
+				{
+					Console.WriteLine("  > {0}", data.ToString());
+				}
+
+				Console.WriteLine();
+			}
+		}
+
+		static void EnumerateWirelessInterfaceConnections()
+		{
+			if (_debug)
+			{
+				Console.WriteLine("Enumerate Wireless Interface Connections...");
+
+				foreach (InterfaceConnectionInfo interfaceConnectionInfo in NativeWifi.EnumerateInterfaceConnections())
+				{
+					Console.WriteLine("  > {0}, {1}, {2}, {3}", interfaceConnectionInfo.Id, interfaceConnectionInfo.Description, interfaceConnectionInfo.ProfileName, interfaceConnectionInfo.IsConnected);
+				}
+
+				Console.WriteLine();
+			}
+		}
+
+		static void EnumerateWirelessProfiles()
+		{
+			if (_debug)
+			{
+				Console.WriteLine("Enumerate Wireless Profiles...");
+
+				foreach (ProfilePack profilePack in NativeWifi.EnumerateProfiles())
+				{
+					Console.WriteLine("  > {0}, {1}, {2}, {3}", profilePack.Name, profilePack.Position, profilePack.Interface.Id, profilePack.Interface.Description);
+				}
+
+				Console.WriteLine();
+			}
+		}
+
 		static void SetWiredAdapter(Adapter adpCfg, Interface infCfg)
 		{
 			ManagementClass mngtClass = null;
@@ -724,45 +769,11 @@ namespace IP_Change
 
 			if (RetrieveNetworkInterface() == false) return;
 
-			// Enumerate Wireless Interface Connections
-			Console.WriteLine("Enumerate Wireless Interface Connections...");
+			EnumerateWirelessAvailableNetworkSsids();   // Enumerate Available Network Ssids
 
-			foreach (InterfaceConnectionInfo interfaceConnectionInfo in NativeWifi.EnumerateInterfaceConnections())
-			{
-				Console.WriteLine("  {0}, {1}, {2}, {3}", interfaceConnectionInfo.Id, interfaceConnectionInfo.Description, interfaceConnectionInfo.ProfileName, interfaceConnectionInfo.IsConnected);
-			}
+			EnumerateWirelessInterfaceConnections(); // Enumerate Wireless Interface Connections
 
-			Console.WriteLine();
-
-			// Enumerate Available Network Ssids
-			Console.WriteLine("Enumerate Wireless Available Network Ssids...");
-
-			foreach (NetworkIdentifier networkIdentifier in NativeWifi.EnumerateAvailableNetworkSsids())
-			{
-				Console.WriteLine("  [{0}]", networkIdentifier.ToString());
-			}
-
-			Console.WriteLine();
-
-			// Enumerate Connected Network Ssids
-			Console.WriteLine("Enumerate Wireless Connected Network Ssids...");
-
-			foreach (NetworkIdentifier networkIdentifier in NativeWifi.EnumerateConnectedNetworkSsids())
-			{
-				Console.WriteLine("  [{0}]", networkIdentifier.ToString());
-			}
-
-			Console.WriteLine();
-
-			// Enumerate Profiles
-			Console.WriteLine("Enumerate Wireless Profiles...");
-
-			foreach (ProfilePack profilePack in NativeWifi.EnumerateProfiles())
-			{
-				Console.WriteLine("  {0}, {1}, {2}, {3}", profilePack.Name, profilePack.Position, profilePack.Interface.Id, profilePack.Interface.Description);
-			}
-
-			Console.WriteLine();
+			EnumerateWirelessProfiles();	// Enumerate Wireless Profiles
 
 			return;
 
