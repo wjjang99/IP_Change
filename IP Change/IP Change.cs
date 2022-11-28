@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Management;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
@@ -245,7 +246,7 @@ namespace IP_Change
 					{
 						string mesg = "  > " + (idx++)
 							+ " " + adapter.name
-							+ ", " + (string.IsNullOrEmpty(adapter.ssid) ? "local" : adapter.ssid)
+							+ ", " + (string.IsNullOrEmpty(adapter.ssid) ? _WIRED : adapter.ssid)
 							+ ", " + (adapter.config.dhcp ? _DHCP : _FIX)
 							+ ", " + (adapter.config.dhcp ? _AUTO : adapter.config.ip)
 						;
@@ -522,6 +523,7 @@ namespace IP_Change
 					ManagementBaseObject inMngtBaseObj = null, outMngtBaseObj = null;
 					string[] ipAddress = null, subnetMask = null, gateway = null, dns = null;
 					int[] metric = null;
+					bool netEnabled = false, ipEnabled = false;
 					uint retCode = 0;
 
 					if (adpCfg.config.dhcp)
@@ -531,7 +533,41 @@ namespace IP_Change
 						// ***********************************************************************
 						Console.WriteLine("    -> DHCP");
 
-						#region enable dhcp
+						#region Network Enabled
+						Console.Write("       Network Enabled");
+
+						// get value
+						netEnabled = infCfg.netEnabled;
+						Console.Write(String.Empty.PadLeft(20, '.'));
+
+						if (netEnabled)
+						{
+							Console.WriteLine("OK");
+						}
+						else
+						{
+							Console.WriteLine("({0}) Fail: This adapter is not enabled", netEnabled);
+						}
+						#endregion
+
+						#region IP Enabled
+						Console.Write("       IP Enabled");
+
+						// get value
+						ipEnabled = Convert.ToBoolean(mngtObj["IPEnabled"]);
+						Console.Write(String.Empty.PadLeft(25, '.'));
+
+						if (ipEnabled)
+						{
+							Console.WriteLine("OK");
+						}
+						else
+						{
+							Console.WriteLine("({0}) Fail: TCP/IP is not bound and enabled on this network adapter", ipEnabled);
+						}
+						#endregion
+
+						#region Enable DHCP
 						Console.Write("       Enable DHCP");
 						outMngtBaseObj = mngtObj.InvokeMethod("EnableDHCP", null, null);
 						Console.Write(".");
@@ -569,8 +605,6 @@ namespace IP_Change
 						// ***********************************************************************
 						// set static
 						// ***********************************************************************
-						bool netEnabled = false, ipEnabled = false;
-
 						ipAddress = new string[] { adpCfg.config.ip };
 						subnetMask = new string[] { adpCfg.config.subnet };
 						gateway = new string[] { adpCfg.config.gateway };
@@ -710,6 +744,7 @@ namespace IP_Change
 
 		static void SetWirelessdAdapter(Adapter adpCfg, Interface infCfg)
 		{
+			string infCfgGuid = infCfg.guid.Substring(1, infCfg.guid.Length - 2).ToLower();
 			string mesg = null;
 
 			Console.WriteLine("Change Wirelessd Interface...");
@@ -724,12 +759,42 @@ namespace IP_Change
 			;
 			if (_debug) Console.WriteLine("  - {0}", mesg);
 
-			if (_debug) Console.WriteLine("  + index, caption, mac");
+			if (_debug) Console.WriteLine("  + Id, Description, State");
 
+			foreach (InterfaceInfo infInfo in NativeWifi.EnumerateInterfaces())
+			{
+				if (_debug) Console.WriteLine("  > {0}, {1}, {2}", infInfo.Id, infInfo.Description, infInfo.State);
 
+				if (infInfo.Id.ToString().Equals(infCfgGuid))
+				{
+					string ipAddress = null, subnetMask = null, gateway = null, dns = null;
+					int metric = 0;
 
+					if (adpCfg.config.dhcp)
+					{
+						// ***********************************************************************
+						// set dhcp
+						// ***********************************************************************
+						Console.WriteLine("    -> DHCP");
+
+					}
+					else
+					{
+						// ***********************************************************************
+						// set static
+						// ***********************************************************************
+						ipAddress = adpCfg.config.ip;
+						subnetMask = adpCfg.config.subnet;
+						gateway = adpCfg.config.gateway;
+						metric = adpCfg.config.metric;
+						dns = adpCfg.config.dns;
+						Console.WriteLine("    -> IP: {0}, SUBNET: {1}, G/W: {2}, DNS: {3}", string.Join(";", ipAddress), string.Join(";", subnetMask), string.Join(";", gateway), string.Join(";", dns));
+					}
+
+					break;
+				}
+			}
 		}
-
 		public static void Main(string[] args)
 		{
 			#region Set Arguments
@@ -741,7 +806,7 @@ namespace IP_Change
 
 					switch (arg.Substring(0, 2).ToUpper())
 					{
-						case "-D": // debug
+						case "-V": // verbose
 							_debug = true;
 							break;
 						case "-I": // network interface
@@ -774,8 +839,6 @@ namespace IP_Change
 			EnumerateWirelessInterfaceConnections(); // Enumerate Wireless Interface Connections
 
 			EnumerateWirelessProfiles();	// Enumerate Wireless Profiles
-
-			return;
 
 			#region Select Network Interface
 			if (InterfaceList.Count > 1 && chooseInterfaceIndex == 0)
@@ -915,7 +978,7 @@ namespace IP_Change
 			if (_debug) Console.WriteLine("[CFG] name: {0}", adpCfg.name);
 
 			isWireless = IsWirelessInterface(infCfg.guid);
-			if (_debug) Console.WriteLine("[INF] id: {0}, name: {1}, index: {2}, mac: {3}, type: {4}", infCfg.guid, infCfg.name, infCfg.index, infCfg.macAddr, (isWireless ? _WIRELESS : _WIRED));
+			if (_debug) Console.WriteLine("[INF] guid: {0}, name: {1}, index: {2}, mac: {3}, type: {4}", infCfg.guid, infCfg.name, infCfg.index, infCfg.macAddr, (isWireless ? _WIRELESS : _WIRED));
 
 			if (isWireless)
 			{
