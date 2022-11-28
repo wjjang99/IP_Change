@@ -724,8 +724,8 @@ namespace IP_Change
 
 			if (RetrieveNetworkInterface() == false) return;
 
-			// Enumerate Interface Connections
-			Console.WriteLine("Enumerate Interface Connections...");
+			// Enumerate Wireless Interface Connections
+			Console.WriteLine("Enumerate Wireless Interface Connections...");
 
 			foreach (InterfaceConnectionInfo interfaceConnectionInfo in NativeWifi.EnumerateInterfaceConnections())
 			{
@@ -735,7 +735,7 @@ namespace IP_Change
 			Console.WriteLine();
 
 			// Enumerate Available Network Ssids
-			Console.WriteLine("Enumerate Available Network Ssids...");
+			Console.WriteLine("Enumerate Wireless Available Network Ssids...");
 
 			foreach (NetworkIdentifier networkIdentifier in NativeWifi.EnumerateAvailableNetworkSsids())
 			{
@@ -745,7 +745,7 @@ namespace IP_Change
 			Console.WriteLine();
 
 			// Enumerate Connected Network Ssids
-			Console.WriteLine("Enumerate Connected Network Ssids...");
+			Console.WriteLine("Enumerate Wireless Connected Network Ssids...");
 
 			foreach (NetworkIdentifier networkIdentifier in NativeWifi.EnumerateConnectedNetworkSsids())
 			{
@@ -755,7 +755,7 @@ namespace IP_Change
 			Console.WriteLine();
 
 			// Enumerate Profiles
-			Console.WriteLine("Enumerate Profiles...");
+			Console.WriteLine("Enumerate Wireless Profiles...");
 
 			foreach (ProfilePack profilePack in NativeWifi.EnumerateProfiles())
 			{
